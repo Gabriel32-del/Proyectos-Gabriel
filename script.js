@@ -2,15 +2,15 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebas
 import { 
     getFirestore, collection, addDoc, getDocs, query, orderBy, limit 
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-// Módulos nativos para controlar el flujo de autenticación y tokens OAuth
+// Importamos signInWithPopup para evitar los bloqueos de URLs de redirección
 import { 
-    getAuth, signInWithRedirect, GoogleAuthProvider, getRedirectResult, onAuthStateChanged, signOut 
+    getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut 
 } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
 
 // ==========================================
 // CONFIGURACIÓN DE TU INSTANCIA FIREBASE
 // ==========================================
-// ⚠️ REEMPLAZÁ ESTOS DATOS CON LOS DE TU PROYECTO ("Proyectos Gabriel")
+// ⚠️ REEMPLAZÁ ESTOS DATOS CON LOS DE TU PROYECTO REAL
 const firebaseConfig = {
     apiKey: "AIzaSyCGIF5uPgFQiIXeeF9Stkgad38FvFq2zD8",
   authDomain: "proyectos-gabriel.firebaseapp.com",
@@ -29,19 +29,17 @@ const auth = getAuth(app);
 // ==========================================
 const provider = new GoogleAuthProvider();
 
-// Scopes opcionales por si en el futuro querés consumir APIs de Google del usuario
 provider.addScope('https://www.googleapis.com/auth/userinfo.profile');
 provider.addScope('https://www.googleapis.com/auth/userinfo.email');
 
 window.usuarioActivo = null;
-window.oauthAccessToken = null; // Variable global para almacenar el Access Token de OAuth
+window.oauthAccessToken = null; 
 
 // ==========================================
 // ESCUCHADOR EN TIEMPO REAL DEL ESTADO AUTH
 // ==========================================
 onAuthStateChanged(auth, async (user) => {
     if (user) {
-        // Mapeamos los datos reales que nos devuelve Google tras el handshake
         window.usuarioActivo = { 
             username: user.displayName || "Usuario Blade",
             email: user.email,
@@ -51,42 +49,53 @@ onAuthStateChanged(auth, async (user) => {
     } else {
         window.usuarioActivo = null;
         window.oauthAccessToken = null;
-        document.getElementById('dashboard-view').style.display = 'none';
-        document.getElementById('login-view').style.display = 'flex';
+        if (document.getElementById('dashboard-view')) {
+            document.getElementById('dashboard-view').style.display = 'none';
+        }
+        if (document.getElementById('login-view')) {
+            document.getElementById('login-view').style.display = 'flex';
+        }
     }
 });
 
-// Intercepta y procesa el token OAuth cuando el navegador vuelve de la redirección de Google
-getRedirectResult(auth)
-    .then((result) => {
-        if (result) {
-            // Extraemos la credencial OAuth pura para poder usar APIs de Google en su nombre
-            const credential = GoogleAuthProvider.credentialFromResult(result);
-            window.oauthAccessToken = credential.accessToken;
-            
-            window.registrarActividad("Token de acceso OAuth 2.0 estructurado con éxito.");
-            console.log("OAuth Access Token Activo:", window.oauthAccessToken);
-        }
-    })
-    .catch((error) => {
-        console.error("Error en el intercambio de tokens OAuth:", error);
-        window.mostrarNotificacion("Error en el protocolo de verificación de Google.", "error");
-    });
-
 // ==========================================
-// DISPARADORES DE ENTRADA Y SALIDA OAUTH
+// ACCESO CON POPUP (EVITA REDIRECT_URI_MISMATCH)
 // ==========================================
 window.procesarLoginGoogle = function() {
-    window.registrarActividad("Redirigiendo al servidor de autorización OAuth...");
-    signInWithRedirect(auth, provider);
+    if (typeof window.registrarActividad === "function") {
+        window.registrarActividad("Abriendo ventana de autorización OAuth 2.0...");
+    }
+    
+    signInWithPopup(auth, provider)
+        .then((result) => {
+            if (result) {
+                const credential = GoogleAuthProvider.credentialFromResult(result);
+                window.oauthAccessToken = credential.accessToken;
+                
+                if (typeof window.registrarActividad === "function") {
+                    window.registrarActividad("Token OAuth 2.0 capturado exitosamente.");
+                }
+                console.log("OAuth Access Token Activo:", window.oauthAccessToken);
+            }
+        })
+        .catch((error) => {
+            console.error("Error en el login por Popup:", error);
+            if (typeof window.mostrarNotificacion === "function") {
+                window.mostrarNotificacion("Error al iniciar sesión con la ventana flotante.", "error");
+            }
+        });
 };
 
 window.procesarLogout = function() {
-    window.registrarActividad("Destruyendo sesión y credenciales OAuth...");
+    if (typeof window.registrarActividad === "function") {
+        window.registrarActividad("Cerrando credenciales...");
+    }
     signOut(auth).then(() => {
-        window.mostrarNotificacion("Sesión cerrada. Token destruido.", "success");
+        if (typeof window.mostrarNotificacion === "function") {
+            window.mostrarNotificacion("Sesión cerrada correctamente.", "success");
+        }
     }).catch((error) => {
-        window.mostrarNotificacion("Error al revocar la sesión activa.", "error");
+        console.error("Error al cerrar sesión:", error);
     });
 };
 
@@ -94,23 +103,26 @@ window.procesarLogout = function() {
 // INICIALIZACIÓN DEL ENTORNO PRINCIPAL
 // ==========================================
 async function levantarDashboard() {
-    document.getElementById('login-view').style.display = 'none';
-    document.getElementById('dashboard-view').style.display = 'block';
+    if (document.getElementById('login-view')) document.getElementById('login-view').style.display = 'none';
+    if (document.getElementById('dashboard-view')) document.getElementById('dashboard-view').style.display = 'block';
     
-    document.getElementById('nav-username').innerText = window.usuarioActivo.username;
-    document.getElementById('profile-user-title').innerText = window.usuarioActivo.username;
-    if(window.usuarioActivo.photo) {
+    if (document.getElementById('nav-username')) document.getElementById('nav-username').innerText = window.usuarioActivo.username;
+    if (document.getElementById('profile-user-title')) document.getElementById('profile-user-title').innerText = window.usuarioActivo.username;
+    
+    if(window.usuarioActivo.photo && document.getElementById('nav-avatar')) {
         document.getElementById('nav-avatar').src = window.usuarioActivo.photo;
     }
 
-    window.registrarActividad(`Token asignado al nodo: ${window.usuarioActivo.email}`);
+    if (typeof window.registrarActividad === "function") {
+        window.registrarActividad(`Token asignado al nodo: ${window.usuarioActivo.email}`);
+    }
     
     await window.recargarMuroManual();
     await cargarAnunciosFirebase();
 }
 
 // ==========================================
-// INTEGRACIÓN NATIVA FIRESTORE CLOUD
+// INTEGRACIÓN FIRESTORE CLOUD
 // ==========================================
 window.recargarMuroManual = async function() {
     const contenedor = document.getElementById('community-wall-container');
@@ -151,11 +163,14 @@ window.recargarMuroManual = async function() {
             nuevoPost.querySelector('p').innerText = data.contenido;
             contenedor.appendChild(nuevoPost);
 
-            document.getElementById(btnId).addEventListener('click', () => {
-                window.compartirWhatsApp(data.contenido);
-            });
+            const btnSms = document.getElementById(btnId);
+            if(btnSms) {
+                btnSms.addEventListener('click', () => {
+                    window.compartirWhatsApp(data.contenido);
+                });
+            }
         });
-        window.registrarActividad("Muro descargado de Firebase.");
+        if (typeof window.registrarActividad === "function") window.registrarActividad("Muro descargado de Firebase.");
     } catch (e) {
         console.error(e);
         contenedor.innerHTML = `<div class="post-node" style="border-left: 4px solid var(--orange-primary);"><p style="color:var(--orange-primary); font-size: 0.85rem;">Vista previa local activa. Añadí tus credenciales reales en 'firebaseConfig' para activar la sincronización cloud.</p></div>`;
@@ -164,54 +179,61 @@ window.recargarMuroManual = async function() {
 
 window.publicarNuevoPost = async function() {
     const textInput = document.getElementById('post-text-input');
+    if (!textInput) return;
     const contenido = textInput.value.trim();
-    const tag = document.getElementById('post-tag-select').value;
+    const tagSelect = document.getElementById('post-tag-select');
+    const tag = tagSelect ? tagSelect.value : "GENERAL";
 
     if (!contenido) {
-        window.mostrarNotificacion("Por favor escribe un mensaje antes de publicar.", "error");
+        if (typeof window.mostrarNotificacion === "function") window.mostrarNotificacion("Por favor escribe un mensaje antes de publicar.", "error");
         return;
     }
 
     try {
         await addDoc(collection(db, "posts"), {
-            autor: window.usuarioActivo.username,
+            autor: window.usuarioActivo ? window.usuarioActivo.username : "Invitado",
             contenido: contenido,
             tag: tag,
             fecha: Date.now()
         });
 
         textInput.value = "";
-        window.mostrarNotificacion("¡Publicación enviada a Firestore Cloud!", "success");
+        if (typeof window.mostrarNotificacion === "function") window.mostrarNotificacion("¡Publicación enviada a Firestore Cloud!", "success");
         await window.recargarMuroManual();
     } catch (error) {
         const contenedor = document.getElementById('community-wall-container');
-        if(contenedor.innerHTML.includes("Vista previa")) contenedor.innerHTML = "";
+        if(contenedor && contenedor.innerHTML.includes("Vista previa")) contenedor.innerHTML = "";
         
-        const idLocal = "local-" + Date.now();
-        const nuevoPost = document.createElement('div');
-        nuevoPost.className = 'post-node';
-        nuevoPost.innerHTML = `
-            <div class="post-node-header">
-                <span class="post-node-author">👤 ${window.usuarioActivo ? window.usuarioActivo.username : 'Invitado'} (Local)</span>
-                <span class="post-node-tag">${tag.toUpperCase()}</span>
-            </div>
-            <p></p>
-            <div class="post-actions-footer">
-                <button class="btn-whatsapp-share" id="${idLocal}">
-                    💬 Mandar a WhatsApp
-                </button>
-            </div>
-        `;
-        
-        nuevoPost.querySelector('p').innerText = contenido;
-        contenedor.insertBefore(nuevoPost, contenedor.firstChild);
-        
-        document.getElementById(idLocal).addEventListener('click', () => {
-            window.compartirWhatsApp(contenido);
-        });
+        if (contenedor) {
+            const idLocal = "local-" + Date.now();
+            const nuevoPost = document.createElement('div');
+            nuevoPost.className = 'post-node';
+            nuevoPost.innerHTML = `
+                <div class="post-node-header">
+                    <span class="post-node-author">👤 ${window.usuarioActivo ? window.usuarioActivo.username : 'Invitado'} (Local)</span>
+                    <span class="post-node-tag">${tag.toUpperCase()}</span>
+                </div>
+                <p></p>
+                <div class="post-actions-footer">
+                    <button class="btn-whatsapp-share" id="${idLocal}">
+                        💬 Mandar a WhatsApp
+                    </button>
+                </div>
+            `;
+            
+            nuevoPost.querySelector('p').innerText = contenido;
+            contenedor.insertBefore(nuevoPost, contenedor.firstChild);
+            
+            const btnLocal = document.getElementById(idLocal);
+            if(btnLocal) {
+                btnLocal.addEventListener('click', () => {
+                    window.compartirWhatsApp(contenido);
+                });
+            }
+        }
 
         textInput.value = "";
-        window.mostrarNotificacion("Publicado localmente (Modo offline activo).", "info");
+        if (typeof window.mostrarNotificacion === "function") window.mostrarNotificacion("Publicado localmente (Modo offline activo).", "info");
     }
 };
 
@@ -235,32 +257,41 @@ async function cargarAnunciosFirebase() {
             container.innerHTML = `<div class="announcement-item">No hay anuncios fijados globales.</div>`;
         }
     } catch(e) {
-        container.innerHTML = `<div class="announcement-item">🔥 ¡Bienvenido, ${window.usuarioActivo.username}! Flujo OAuth establecido correctamente.</div>`;
+        if(window.usuarioActivo) {
+            container.innerHTML = `<div class="announcement-item">🔥 ¡Bienvenido, ${window.usuarioActivo.username}! Flujo OAuth establecido correctamente.</div>`;
+        }
     }
 }
 
 window.publicarAnuncioFirebase = async function() {
-    const titulo = document.getElementById('admin-news-title').value.trim();
-    const contenido = document.getElementById('admin-news-content').value.trim();
+    const titleEl = document.getElementById('admin-news-title');
+    const contentEl = document.getElementById('admin-news-content');
+    if(!titleEl || !contentEl) return;
+    
+    const titulo = titleEl.value.trim();
+    const contenido = contentEl.value.trim();
 
     if(!titulo || !contenido) {
-        window.mostrarNotificacion("Complete todos los campos del formulario.", "error");
+        if (typeof window.mostrarNotificacion === "function") window.mostrarNotificacion("Complete todos los campos del formulario.", "error");
         return;
     }
 
     try {
         await addDoc(collection(db, "anuncios"), { titulo, contenido, fecha: Date.now() });
         window.cerrarModal('modal-anuncio');
-        window.mostrarNotificacion("Anuncio anclado en la nube.", "success");
+        if (typeof window.mostrarNotificacion === "function") window.mostrarNotificacion("Anuncio anclado en la nube.", "success");
         await cargarAnunciosFirebase();
     } catch(e) {
         const container = document.getElementById('news-container');
         if(container) container.innerHTML = `<div class="announcement-item"><strong>📢 ${titulo}:</strong> ${contenido}</div>`;
         window.cerrarModal('modal-anuncio');
-        window.mostrarNotificacion("Anuncio fijado de forma local.", "info");
+        if (typeof window.mostrarNotificacion === "function") window.mostrarNotificacion("Anuncio fijado de forma local.", "info");
     }
 };
 
+// ==========================================
+// FUNCIONES GENERALES DEL DASHBOARD (INTERFAZ)
+// ==========================================
 window.limpiarMuroLocal = function() {
     const contenedor = document.getElementById('community-wall-container');
     if (contenedor) contenedor.innerHTML = `<div style="text-align:center; padding:20px; font-size:0.85rem; color:var(--text-muted);">Muro despejado en memoria local.</div>`;
@@ -295,11 +326,14 @@ window.mostrarNotificacion = function(mensaje, tipo = "info") {
     modalMessage.innerText = mensaje;
     
     if (tipo === "error") {
-        modalIcon.innerText = "❌"; modalTitle.innerText = "Error del Sistema";
+        if(modalIcon) modalIcon.innerText = "❌"; 
+        if(modalTitle) modalTitle.innerText = "Error del Sistema";
     } else if (tipo === "success") {
-        modalIcon.innerText = "💥"; modalTitle.innerText = "Completado";
+        if(modalIcon) modalIcon.innerText = "💥"; 
+        if(modalTitle) modalTitle.innerText = "Completado";
     } else {
-        modalIcon.innerText = "🔥"; modalTitle.innerText = "Aviso Blade";
+        if(modalIcon) modalIcon.innerText = "🔥"; 
+        if(modalTitle) modalTitle.innerText = "Aviso Blade";
     }
     modalAlert.style.display = 'flex';
 };
