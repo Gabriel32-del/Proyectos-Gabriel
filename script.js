@@ -1,16 +1,14 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-import { 
-    getFirestore, collection, addDoc, getDocs, query, orderBy, limit 
-} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-// Importamos signInWithPopup para evitar los bloqueos de URLs de redirección
-import { 
-    getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut 
-} from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+// ==========================================
+// IMPORTACIONES OFICIALES SDK FIREBASE MODULAR (ESM)
+// ==========================================
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getAuth, signInWithRedirect, getRedirectResult, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, deleteDoc, doc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 // ==========================================
-// CONFIGURACIÓN DE TU INSTANCIA FIREBASE
+// 🛠️ TU CONFIGURACIÓN REAL DE FIREBASE
 // ==========================================
-// ⚠️ REEMPLAZÁ ESTOS DATOS CON LOS DE TU PROYECTO REAL
+// Reemplaza este objeto con tus datos reales de la consola web de Firebase
 const firebaseConfig = {
     apiKey: "AIzaSyCGIF5uPgFQiIXeeF9Stkgad38FvFq2zD8",
   authDomain: "proyectos-gabriel.firebaseapp.com",
@@ -20,323 +18,272 @@ const firebaseConfig = {
   appId: "1:580302691165:web:6ac6f32a658404d506a6b4"
 };
 
+// Inicialización de los servicios core de Firebase
 const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
 const auth = getAuth(app);
+const db = getFirestore(app);
+
+// Email del administrador (Tú, Gabriel)
+// Cambia esto por tu cuenta de Google real para que te reconozca como Admin único
+const GOOGLE_ADMIN_EMAIL = "gabrielpugliesesantos@gmail.com"; 
 
 // ==========================================
-// CONFIGURACIÓN DEL PROVEEDOR OAUTH (GOOGLE)
-// ==========================================
-const provider = new GoogleAuthProvider();
-
-provider.addScope('https://www.googleapis.com/auth/userinfo.profile');
-provider.addScope('https://www.googleapis.com/auth/userinfo.email');
-
-window.usuarioActivo = null;
-window.oauthAccessToken = null; 
-
-// ==========================================
-// ESCUCHADOR EN TIEMPO REAL DEL ESTADO AUTH
+// OBSERVADOR DE SESIÓN CON GUARDADO AUTOMÁTICO DE USUARIOS
 // ==========================================
 onAuthStateChanged(auth, async (user) => {
     if (user) {
-        window.usuarioActivo = { 
-            username: user.displayName || "Usuario Blade",
-            email: user.email,
-            photo: user.photoURL || "https://api.dicebear.com/7.x/bottts/svg?seed=Gabriel"
-        };
-        await levantarDashboard();
+        logTerminal(`Auth: Usuario detectado -> ${user.email}`);
+        
+        // 1. REGISTRO / ACTUALIZACIÓN AUTOMÁTICA EN FIRESTORE
+        try {
+            // Referencia al documento del usuario usando su UID único como ID
+            const usuarioRef = doc(db, "usuarios", user.uid);
+            
+            // Payload con la metadata del usuario
+            const datosUsuario = {
+                uid: user.uid,
+                nombre: user.displayName || "Usuario Anónimo",
+                email: user.email,
+                foto: user.photoURL || "",
+                ultimaConexion: new Date().toLocaleString('es-ES'),
+                // Si su correo coincide con el tuyo, se le asigna rol ADMIN, si no, USER
+                rol: (user.email === GOOGLE_ADMIN_EMAIL || user.displayName?.toLowerCase().includes("gabriel")) ? "ADMIN" : "USER"
+            };
+
+            // setDoc con merge:true crea el documento si no existe, o lo actualiza si ya existe
+            await setDoc(usuarioRef, datosUsuario, { merge: true });
+            logTerminal(`Firestore: Perfil de ${datosUsuario.nombre} sincronizado en la colección 'usuarios'.`);
+        } catch (error) {
+            logTerminal(`Firestore User Sync Error: ${error.message}`, true);
+        }
+
+        // 2. CONTROL DE INTERFAZ (DASHBOARD)
+        document.getElementById("display-name").innerText = user.displayName || "Usuario";
+        document.getElementById("metric-user-id").innerText = user.uid;
+        
+        if (user.photoURL) {
+            const photoImg = document.getElementById("user-photo");
+            photoImg.src = user.photoURL;
+            photoImg.style.display = "block";
+            document.getElementById("user-avatar-fallback").style.display = "none";
+        }
+
+        // Validación visual de privilegios de Administrador
+        if (user.email === GOOGLE_ADMIN_EMAIL || user.displayName?.toLowerCase().includes("gabriel")) {
+            document.getElementById("admin-badge").style.display = "block";
+            document.getElementById("admin-editor-box").style.display = "block";
+            logTerminal("Seguridad: Interfaz de Administrador ROOT desbloqueada.");
+        } else {
+            document.getElementById("admin-badge").style.display = "none";
+            document.getElementById("admin-editor-box").style.display = "none";
+            logTerminal("Seguridad: Modo visual restringido (Usuario Estándar).");
+        }
+
+        document.getElementById("auth-screen").style.display = "none";
+        document.getElementById("dashboard-screen").style.display = "flex";
+        
+        // Activar el muro de noticias en tiempo real
+        escucharMuroNoticiasFirestore();
+
     } else {
-        window.usuarioActivo = null;
-        window.oauthAccessToken = null;
-        if (document.getElementById('dashboard-view')) {
-            document.getElementById('dashboard-view').style.display = 'none';
-        }
-        if (document.getElementById('login-view')) {
-            document.getElementById('login-view').style.display = 'flex';
-        }
+        logTerminal("Auth: Esperando autenticación en el nodo cloud...");
+        document.getElementById("dashboard-screen").style.display = "none";
+        document.getElementById("auth-screen").style.display = "flex";
     }
 });
 
 // ==========================================
-// ACCESO CON POPUP (EVITA REDIRECT_URI_MISMATCH)
+// CAPTURA DEL RESULTADO DE REDIRECT AL CARGAR LA PÁGINA
 // ==========================================
-window.procesarLoginGoogle = function() {
-    if (typeof window.registrarActividad === "function") {
-        window.registrarActividad("Abriendo ventana de autorización OAuth 2.0...");
-    }
-    
-    signInWithPopup(auth, provider)
-        .then((result) => {
-            if (result) {
-                const credential = GoogleAuthProvider.credentialFromResult(result);
-                window.oauthAccessToken = credential.accessToken;
-                
-                if (typeof window.registrarActividad === "function") {
-                    window.registrarActividad("Token OAuth 2.0 capturado exitosamente.");
-                }
-                console.log("OAuth Access Token Activo:", window.oauthAccessToken);
-            }
-        })
-        .catch((error) => {
-            console.error("Error en el login por Popup:", error);
-            if (typeof window.mostrarNotificacion === "function") {
-                window.mostrarNotificacion("Error al iniciar sesión con la ventana flotante.", "error");
-            }
-        });
-};
-
-window.procesarLogout = function() {
-    if (typeof window.registrarActividad === "function") {
-        window.registrarActividad("Cerrando credenciales...");
-    }
-    signOut(auth).then(() => {
-        if (typeof window.mostrarNotificacion === "function") {
-            window.mostrarNotificacion("Sesión cerrada correctamente.", "success");
+getRedirectResult(auth)
+    .then((result) => {
+        if (result && result.user) {
+            logTerminal(`Auth: Redirect completado. Bienvenido ${result.user.displayName}`);
         }
-    }).catch((error) => {
-        console.error("Error al cerrar sesión:", error);
+    })
+    .catch((error) => {
+        console.error(error);
+        const errText = document.getElementById("auth-error-text");
+        if (errText) {
+            errText.innerText = `Error Auth: ${error.message}`;
+            errText.style.display = "block";
+        }
+        logTerminal(`Error Auth Redirect [${error.code}]: ${error.message}`, true);
     });
-};
 
-// ==========================================
-// INICIALIZACIÓN DEL ENTORNO PRINCIPAL
-// ==========================================
-async function levantarDashboard() {
-    if (document.getElementById('login-view')) document.getElementById('login-view').style.display = 'none';
-    if (document.getElementById('dashboard-view')) document.getElementById('dashboard-view').style.display = 'block';
-    
-    if (document.getElementById('nav-username')) document.getElementById('nav-username').innerText = window.usuarioActivo.username;
-    if (document.getElementById('profile-user-title')) document.getElementById('profile-user-title').innerText = window.usuarioActivo.username;
-    
-    if(window.usuarioActivo.photo && document.getElementById('nav-avatar')) {
-        document.getElementById('nav-avatar').src = window.usuarioActivo.photo;
-    }
+// Redirige a Google para autenticar (sin popup)
+function iniciarSesionGoogle() {
+    const provider = new GoogleAuthProvider();
+    logTerminal("Auth: Redirigiendo a la pasarela de autenticación de Google...");
+    signInWithRedirect(auth, provider);
+}
 
-    if (typeof window.registrarActividad === "function") {
-        window.registrarActividad(`Token asignado al nodo: ${window.usuarioActivo.email}`);
-    }
-    
-    await window.recargarMuroManual();
-    await cargarAnunciosFirebase();
+// Cierre de sesión seguro
+function cerrarSesionEcosistema() {
+    signOut(auth).then(() => {
+        logTerminal("Auth: Sesión destruida en el nodo cloud.");
+    });
 }
 
 // ==========================================
-// INTEGRACIÓN FIRESTORE CLOUD
+// MOTOR EN TIEMPO REAL (FIREBASE FIRESTORE)
 // ==========================================
-window.recargarMuroManual = async function() {
-    const contenedor = document.getElementById('community-wall-container');
-    if (!contenedor) return;
-    contenedor.innerHTML = `<div style="text-align:center; padding:20px; font-size:0.85rem; color:var(--text-muted);">Sincronizando Muro...</div>`;
 
-    try {
-        const q = query(collection(db, "posts"), orderBy("fecha", "desc"), limit(20));
-        const querySnapshot = await getDocs(q);
+// Escucha reactiva usando onSnapshot (se actualiza solo sin refrescar la página)
+function escucharMuroNoticiasFirestore() {
+    logTerminal("Firestore: Conectando a la colección 'noticias'...");
+    
+    const coleccionRef = collection(db, "noticias");
+    const consultaOrdenada = query(coleccionRef, orderBy("timestamp", "desc"));
+
+    // El estado del indicador superior cambia a activo
+    const statusText = document.getElementById("firebase-status-text");
+    statusText.innerText = "Conectado a Firestore Live";
+    document.getElementById("status-indicator-dot").style.background = "#34a853";
+
+    onSnapshot(consultaOrdenada, (snapshot) => {
+        const feedContenedor = document.getElementById("firestore-news-feed");
+        if (!feedContenedor) return;
         
-        contenedor.innerHTML = "";
-        
-        if (querySnapshot.empty) {
-            contenedor.innerHTML = `<div style="text-align:center; padding:30px; font-size:0.85rem; color:var(--text-muted);">No hay publicaciones activas.</div>`;
+        feedContenedor.innerHTML = "";
+        logTerminal(`Firestore: Snapshot recibido. Sincronizando ${snapshot.size} documento(s).`);
+
+        if (snapshot.empty) {
+            feedContenedor.innerHTML = `<div class="text-muted" style="text-align: center; padding: 2rem;">El muro está vacío. Lanza un comunicado, Gabriel.</div>`;
             return;
         }
 
-        querySnapshot.forEach((doc) => {
-            const data = doc.data();
-            const nuevoPost = document.createElement('div');
-            nuevoPost.className = 'post-node';
-            
-            const btnId = `wa-${doc.id}`;
+        snapshot.forEach((docSnap) => {
+            const data = docSnap.data();
+            const docId = docSnap.id;
 
-            nuevoPost.innerHTML = `
-                <div class="post-node-header">
-                    <span class="post-node-author">👤 ${data.autor}</span>
-                    <span class="post-node-tag">${data.tag ? data.tag : 'GENERAL'}</span>
-                </div>
-                <p></p>
-                <div class="post-actions-footer">
-                    <button class="btn-whatsapp-share" id="${btnId}">
-                        💬 Mandar a WhatsApp
-                    </button>
+            // Verificar si el usuario logueado es admin para habilitar el botón de borrar
+            const esAdmin = auth.currentUser?.email === GOOGLE_ADMIN_EMAIL || auth.currentUser?.displayName?.toLowerCase().includes("gabriel");
+            const btnEliminarHtml = esAdmin ? `<button class="btn-delete-news" data-id="${docId}">🗑️ Borrar</button>` : '';
+
+            const tarjetaHtml = `
+                <div class="news-card" id="card-${docId}">
+                    <div class="news-meta">
+                        <span>Emitido: <strong>${data.fecha || 'Reciente'}</strong></span>
+                        <span class="news-tag-badge">${data.tag || 'GENERAL'}</span>
+                    </div>
+                    <h3>${data.titulo}</h3>
+                    <p class="text-muted" style="margin-top: 0.5rem;">${data.cuerpo}</p>
+                    <div style="margin-top: 0.8rem; text-align: right;">
+                        ${btnEliminarHtml}
+                    </div>
                 </div>
             `;
-            
-            nuevoPost.querySelector('p').innerText = data.contenido;
-            contenedor.appendChild(nuevoPost);
-
-            const btnSms = document.getElementById(btnId);
-            if(btnSms) {
-                btnSms.addEventListener('click', () => {
-                    window.compartirWhatsApp(data.contenido);
-                });
-            }
+            feedContenedor.innerHTML += tarjetaHtml;
         });
-        if (typeof window.registrarActividad === "function") window.registrarActividad("Muro descargado de Firebase.");
-    } catch (e) {
-        console.error(e);
-        contenedor.innerHTML = `<div class="post-node" style="border-left: 4px solid var(--orange-primary);"><p style="color:var(--orange-primary); font-size: 0.85rem;">Vista previa local activa. Añadí tus credenciales reales en 'firebaseConfig' para activar la sincronización cloud.</p></div>`;
-    }
-};
 
-window.publicarNuevoPost = async function() {
-    const textInput = document.getElementById('post-text-input');
-    if (!textInput) return;
-    const contenido = textInput.value.trim();
-    const tagSelect = document.getElementById('post-tag-select');
-    const tag = tagSelect ? tagSelect.value : "GENERAL";
+        // Vincular eventos de borrado de forma dinámica debido al tipado module
+        document.querySelectorAll(".btn-delete-news").forEach(btn => {
+            btn.addEventListener("click", (e) => {
+                const idDocumento = e.target.getAttribute("data-id");
+                eliminarNoticiaFirestore(idDocumento);
+            });
+        });
 
-    if (!contenido) {
-        if (typeof window.mostrarNotificacion === "function") window.mostrarNotificacion("Por favor escribe un mensaje antes de publicar.", "error");
+    }, (error) => {
+        logTerminal(`Firestore Error: No se pudo leer la colección. Verifique las reglas de seguridad. ${error.message}`, true);
+        statusText.innerText = "Error de Permisos Cloud";
+        document.getElementById("status-indicator-dot").style.background = "#ea4335";
+    });
+}
+
+// Agregar documentos a Firestore
+async function publicarNoticiaFirestore() {
+    const titulo = document.getElementById("news-title").value.trim();
+    const cuerpo = document.getElementById("news-body").value.trim();
+    const tag = document.getElementById("news-tag").value.trim() || "GENERAL";
+
+    if (!titulo || !cuerpo) {
+        alert("Gabriel, completa el título y el cuerpo antes de lanzar.");
         return;
     }
 
     try {
-        await addDoc(collection(db, "posts"), {
-            autor: window.usuarioActivo ? window.usuarioActivo.username : "Invitado",
-            contenido: contenido,
-            tag: tag,
-            fecha: Date.now()
+        logTerminal("Firestore: Enviando payload de datos...");
+        await addDoc(collection(db, "noticias"), {
+            titulo: titulo,
+            cuerpo: cuerpo,
+            tag: tag.toUpperCase(),
+            timestamp: Date.now(),
+            fecha: new Date().toLocaleDateString('es-ES', { hour: '2-digit', minute: '2-digit' })
         });
 
-        textInput.value = "";
-        if (typeof window.mostrarNotificacion === "function") window.mostrarNotificacion("¡Publicación enviada a Firestore Cloud!", "success");
-        await window.recargarMuroManual();
+        // Limpiar inputs
+        document.getElementById("news-title").value = "";
+        document.getElementById("news-body").value = "";
+        document.getElementById("news-tag").value = "";
+        logTerminal("Firestore: Transacción completada y escrita con éxito.");
+
     } catch (error) {
-        const contenedor = document.getElementById('community-wall-container');
-        if(contenedor && contenedor.innerHTML.includes("Vista previa")) contenedor.innerHTML = "";
-        
-        if (contenedor) {
-            const idLocal = "local-" + Date.now();
-            const nuevoPost = document.createElement('div');
-            nuevoPost.className = 'post-node';
-            nuevoPost.innerHTML = `
-                <div class="post-node-header">
-                    <span class="post-node-author">👤 ${window.usuarioActivo ? window.usuarioActivo.username : 'Invitado'} (Local)</span>
-                    <span class="post-node-tag">${tag.toUpperCase()}</span>
-                </div>
-                <p></p>
-                <div class="post-actions-footer">
-                    <button class="btn-whatsapp-share" id="${idLocal}">
-                        💬 Mandar a WhatsApp
-                    </button>
-                </div>
-            `;
-            
-            nuevoPost.querySelector('p').innerText = contenido;
-            contenedor.insertBefore(nuevoPost, contenedor.firstChild);
-            
-            const btnLocal = document.getElementById(idLocal);
-            if(btnLocal) {
-                btnLocal.addEventListener('click', () => {
-                    window.compartirWhatsApp(contenido);
-                });
-            }
-        }
-
-        textInput.value = "";
-        if (typeof window.mostrarNotificacion === "function") window.mostrarNotificacion("Publicado localmente (Modo offline activo).", "info");
-    }
-};
-
-window.compartirWhatsApp = function(texto) {
-    const mensajeFormateado = encodeURIComponent(`*🚨 [ProjectBlade Hub]* \n\n${texto}`);
-    const urlWhatsApp = `https://api.whatsapp.com/send?text=${mensajeFormateado}`;
-    window.open(urlWhatsApp, '_blank');
-};
-
-async function cargarAnunciosFirebase() {
-    const container = document.getElementById('news-container');
-    if (!container) return;
-    try {
-        const q = query(collection(db, "anuncios"), orderBy("fecha", "desc"), limit(1));
-        const snap = await getDocs(q);
-        if (!snap.empty) {
-            snap.forEach(doc => {
-                container.innerHTML = `<div class="announcement-item"><strong>⚡ ${doc.data().titulo}:</strong> ${doc.data().contenido}</div>`;
-            });
-        } else {
-            container.innerHTML = `<div class="announcement-item">No hay anuncios fijados globales.</div>`;
-        }
-    } catch(e) {
-        if(window.usuarioActivo) {
-            container.innerHTML = `<div class="announcement-item">🔥 ¡Bienvenido, ${window.usuarioActivo.username}! Flujo OAuth establecido correctamente.</div>`;
-        }
+        logTerminal(`Firestore Add Error: ${error.message}`, true);
+        alert("Error al guardar. Revisa la terminal de eventos.");
     }
 }
 
-window.publicarAnuncioFirebase = async function() {
-    const titleEl = document.getElementById('admin-news-title');
-    const contentEl = document.getElementById('admin-news-content');
-    if(!titleEl || !contentEl) return;
-    
-    const titulo = titleEl.value.trim();
-    const contenido = contentEl.value.trim();
-
-    if(!titulo || !contenido) {
-        if (typeof window.mostrarNotificacion === "function") window.mostrarNotificacion("Complete todos los campos del formulario.", "error");
-        return;
-    }
-
+// Eliminar documentos de Firestore
+async function eliminarNoticiaFirestore(id) {
+    if (!confirm("¿Deseas remover este comunicado del servidor de forma permanente?")) return;
     try {
-        await addDoc(collection(db, "anuncios"), { titulo, contenido, fecha: Date.now() });
-        window.cerrarModal('modal-anuncio');
-        if (typeof window.mostrarNotificacion === "function") window.mostrarNotificacion("Anuncio anclado en la nube.", "success");
-        await cargarAnunciosFirebase();
-    } catch(e) {
-        const container = document.getElementById('news-container');
-        if(container) container.innerHTML = `<div class="announcement-item"><strong>📢 ${titulo}:</strong> ${contenido}</div>`;
-        window.cerrarModal('modal-anuncio');
-        if (typeof window.mostrarNotificacion === "function") window.mostrarNotificacion("Anuncio fijado de forma local.", "info");
+        logTerminal(`Firestore: Removiendo documento ID: ${id}`);
+        await deleteDoc(doc(db, "noticias", id));
+        logTerminal("Firestore: Documento purgado correctamente.");
+    } catch (error) {
+        logTerminal(`Firestore Delete Error: ${error.message}`, true);
     }
-};
+}
 
 // ==========================================
-// FUNCIONES GENERALES DEL DASHBOARD (INTERFAZ)
+// INTERFAZ DE USUARIO & NAVEGACIÓN
 // ==========================================
-window.limpiarMuroLocal = function() {
-    const contenedor = document.getElementById('community-wall-container');
-    if (contenedor) contenedor.innerHTML = `<div style="text-align:center; padding:20px; font-size:0.85rem; color:var(--text-muted);">Muro despejado en memoria local.</div>`;
-};
 
-window.cambiarPestana = function(idTab) {
-    document.querySelectorAll('.app-tab-content').forEach(tab => tab.style.display = 'none');
-    document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
-    
-    const targetTab = document.getElementById(`tab-${idTab}`);
-    const targetBtn = document.getElementById(`btn-tab-${idTab}`);
-    if (targetTab) targetTab.style.display = 'block';
-    if (targetBtn) targetBtn.classList.add('active');
-};
+function intercambiarSidebar() {
+    document.getElementById("sidebar").classList.toggle("open");
+}
 
-window.registrarActividad = function(mensaje) {
-    const list = document.getElementById('activity-log-list');
-    if(list) {
-        const item = document.createElement('li');
-        item.innerText = mensaje;
-        list.appendChild(item);
+function cambiarVistaPestana(e) {
+    const boton = e.currentTarget;
+    const tabTarget = boton.getAttribute("data-tab");
+
+    document.querySelectorAll(".tab-view").forEach(v => v.classList.remove("active"));
+    document.querySelectorAll(".menu-item").forEach(b => b.classList.remove("active"));
+
+    document.getElementById(`view-${tabTarget}`).classList.add("active");
+    boton.classList.add("active");
+
+    if (window.innerWidth <= 768) {
+        document.getElementById("sidebar").classList.remove("open");
     }
-};
+    logTerminal(`UI: Cambiando enfoque a panel [${tabTarget.toUpperCase()}]`);
+}
 
-window.mostrarNotificacion = function(mensaje, tipo = "info") {
-    const modalAlert = document.getElementById('modal-alert');
-    const modalTitle = document.getElementById('modal-alert-title');
-    const modalMessage = document.getElementById('modal-alert-message');
-    const modalIcon = document.getElementById('modal-alert-icon');
-    
-    if (!modalAlert || !modalMessage) return;
-    modalMessage.innerText = mensaje;
-    
-    if (tipo === "error") {
-        if(modalIcon) modalIcon.innerText = "❌"; 
-        if(modalTitle) modalTitle.innerText = "Error del Sistema";
-    } else if (tipo === "success") {
-        if(modalIcon) modalIcon.innerText = "💥"; 
-        if(modalTitle) modalTitle.innerText = "Completado";
-    } else {
-        if(modalIcon) modalIcon.innerText = "🔥"; 
-        if(modalTitle) modalTitle.innerText = "Aviso Blade";
-    }
-    modalAlert.style.display = 'flex';
-};
+function logTerminal(mensaje, esError = false) {
+    const terminal = document.getElementById("database-console-log");
+    if (!terminal) return;
+    const item = document.createElement("div");
+    item.className = esError ? "log-line log-err" : "log-line";
+    item.innerText = `[${new Date().toLocaleTimeString()}] ${mensaje}`;
+    terminal.appendChild(item);
+    terminal.scrollTop = terminal.scrollHeight;
+}
 
-window.mostrarModal = function(id) { const el = document.getElementById(id); if (el) el.style.display = 'flex'; };
-window.cerrarModal = function(id) { const el = document.getElementById(id); if (el) el.style.display = 'none'; };
+// ==========================================
+// ESCUCHADORES DE EVENTOS (EVENT LISTENERS)
+// ==========================================
+document.getElementById("btn-google-login").addEventListener("click", iniciarSesionGoogle);
+document.getElementById("btn-logout").addEventListener("click", cerrarSesionEcosistema);
+document.getElementById("btn-hamburger").addEventListener("click", intercambiarSidebar);
+document.getElementById("btn-close-sidebar").addEventListener("click", intercambiarSidebar);
+document.getElementById("btn-publish-news").addEventListener("click", publicarNoticiaFirestore);
+document.getElementById("btn-clear-logs").addEventListener("click", () => {
+    document.getElementById("database-console-log").innerHTML = "";
+    logTerminal("Consola reiniciada por comando local.");
+});
+
+document.querySelectorAll(".menu-item").forEach(btn => {
+    btn.addEventListener("click", cambiarVistaPestana);
+});
