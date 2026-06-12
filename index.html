@@ -3,156 +3,131 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ProjectBlade Hub - Light Edition</title>
+    <title>Proyectps Gabriel</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Google+Sans:wght@400;500;700&family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body>
 
-    <!-- PANTALLA DE INICIO DE SESIÓN -->
-    <div id="login-view" class="auth-container">
-        <div class="auth-card">
-            <div class="brand-header">
-                <div class="brand-logo">🔥</div>
-                <h2>PROJECT<span class="text-gradient">BLADE</span></h2>
-                <p>Panel de Administración y Comunidad</p>
+    <div class="blur-background">
+        <div class="blur-sphere sphere-primary"></div>
+        <div class="blur-sphere sphere-secondary"></div>
+    </div>
+
+    <div id="auth-screen" class="full-screen-center">
+        <div class="glass-container auth-box">
+            <h1 class="brand-header">Proyectos Gabriel</h1>
+            <p class="brand-subheader">Solo hay que pensar. -Gabriel</p>
+            
+            <button id="btn-google-login" class="google-login-btn">
+                <svg viewBox="0 0 24 24" width="20" height="20" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l3.66-2.85z" fill="#FBBC05"/>
+                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.96 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.85c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+                </svg>
+                <span>Acceder con Google</span>
+            </button>
+            <p id="auth-error-text" class="log-err" style="margin-top: 1rem; font-size: 0.85rem; display: none;"></p>
+        </div>
+    </div>
+
+    <div id="dashboard-screen" class="dashboard-layout" style="display: none;">
+        
+        <aside id="sidebar" class="main-sidebar">
+            <div class="sidebar-header">
+                <h2>PB Suite</h2>
+                <button id="btn-close-sidebar" class="toggle-sidebar-btn">✕</button>
             </div>
             
-            <!-- Botón de Google Principal -->
-            <button class="btn-google" onclick="window.procesarLoginGoogle()">
-                <img src="https://fonts.gstatic.com/s/i/productlogos/googleg/v6/24px.svg" alt="Google">
-                Continuar con Google
-            </button>
-
-            <div class="auth-footer">
-                <p>ProjectBlade Auth Node v5.0</p>
-            </div>
-        </div>
-    </div>
-
-    <!-- PANTALLA PRINCIPAL (DASHBOARD) -->
-    <div id="dashboard-view" class="main-layout" style="display: none;">
-        <header class="app-header">
-            <div class="logo">PROJECT<span class="text-orange">BLADE</span> <span class="badge-version">v5.0</span></div>
-            <div class="user-meta">
-                <span id="nav-username">Cargando...</span>
-                <img id="nav-avatar" class="user-avatar-mini" src="https://api.dicebear.com/7.x/bottts/svg?seed=Gabriel" alt="Avatar">
-            </div>
-        </header>
-
-        <main class="app-main-content">
-            <!-- PESTAÑA: MURO -->
-            <div id="tab-inicio" class="app-tab-content">
-                
-                <!-- BOTONES DE ACCIÓN RÁPIDA -->
-                <div class="action-grid">
-                    <button class="action-btn card-orange" onclick="window.recargarMuroManual()">
-                        <span class="action-icon">🔄</span> Sincronizar
-                    </button>
-                    <button class="action-btn card-yellow" onclick="window.mostrarModal('modal-anuncio')">
-                        <span class="action-icon">📢</span> Nuevo Anuncio
-                    </button>
-                    <button class="action-btn card-white" onclick="window.limpiarMuroLocal()">
-                        <span class="action-icon">🗑️</span> Limpiar Vista
-                    </button>
+            <div class="sidebar-user-zone">
+                <img id="user-photo" class="admin-avatar-img" src="" alt="G" style="display: none;">
+                <div id="user-avatar-fallback" class="admin-avatar">G</div>
+                <div class="user-meta">
+                    <span id="display-name" class="user-name">Cargando...</span>
+                    <span id="admin-badge" class="role-tag admin-glow" style="display: none;">ADMINISTRADOR</span>
                 </div>
+            </div>
 
-                <!-- SECCIÓN DE ANUNCIOS DESTACADOS -->
-                <div id="announcements-section" class="pinned-announcements">
-                    <div class="announcement-header"><span>📢 NOVEDADES GLOBALES</span></div>
-                    <div id="news-container" class="announcements-list">
-                        <div class="announcement-item">Conectando con la base de datos de Firebase...</div>
+            <nav class="sidebar-menu">
+                <button class="menu-item active" data-tab="noticias">
+                    <span class="menu-icon">📰</span> Noticias y Muro
+                </button>
+                <button class="menu-item" data-tab="firebase-logs">
+                    <span class="menu-icon">🔥</span> Terminal Firebase
+                </button>
+                <button class="menu-item" data-tab="consola-admin">
+                    <span class="menu-icon">⚡</span> Métricas Cloud
+                </button>
+            </nav>
+
+            <div class="sidebar-footer">
+                <button id="btn-logout" class="glass-btn danger-glass">Cerrar Sesión</button>
+            </div>
+        </aside>
+
+        <div class="main-content">
+            <header class="navbar-top">
+                <button id="btn-hamburger" class="hamburger-menu">☰</button>
+                <div class="connection-status">
+                    <span id="status-indicator-dot" class="status-dot pulsing"></span>
+                    <span id="firebase-status-text">Estableciendo enlace cloud...</span>
+                </div>
+            </header>
+
+            <main class="view-container">
+
+                <section id="view-noticias" class="tab-view active">
+                    <div class="glass-panel summary-header">
+                        <h2>Muro Global de Noticias</h2>
+                        <p class="text-muted">Actualizaciones estratégicas en tiempo real desde Firebase Firestore.</p>
                     </div>
-                </div>
 
-                <!-- PANEL CREADOR DE CONTENIDO -->
-                <div class="feed-container">
-                    <div class="post-creator-card">
-                        <textarea id="post-text-input" placeholder="¿Qué novedades hay en la comunidad, Gabriel?"></textarea>
-                        
-                        <div class="creator-controls">
-                            <div class="select-wrapper">
-                                <select id="post-tag-select">
-                                    <option value="general">💬 General</option>
-                                    <option value="gaming">🎮 Gaming</option>
-                                    <option value="update">⚡ Actualización</option>
-                                    <option value="alert">⚠️ Alerta</option>
-                                </select>
+                    <div id="admin-editor-box" class="glass-panel admin-post-box" style="display: none;">
+                        <div class="panel-tag">CONSOLA PRIVADA DE ADMINISTRACIÓN</div>
+                        <h3>Emitir Comunicado Global</h3>
+                        <input type="text" id="news-title" placeholder="Título de la noticia...">
+                        <textarea id="news-body" placeholder="Escribe el cuerpo del mensaje estratégico..."></textarea>
+                        <div class="post-controls">
+                            <input type="text" id="news-tag" placeholder="Tag (ej. CORE)">
+                            <button id="btn-publish-news" class="glass-btn action-glass">Publicar en Firestore</button>
+                        </div>
+                    </div>
+
+                    <div id="firestore-news-feed" class="news-feed-grid">
+                        <div class="text-muted" style="text-align: center; padding: 2rem;">Esperando flujo de datos de la colección...</div>
+                    </div>
+                </section>
+
+                <section id="view-firebase-logs" class="tab-view">
+                    <div class="glass-panel">
+                        <h2>Terminal de Eventos Firebase</h2>
+                        <p class="text-muted">Monitoreo en tiempo real de transacciones, snapshots de Firestore y cambios de Auth.</p>
+                        <div id="database-console-log" class="log-console"></div>
+                        <button id="btn-clear-logs" class="glass-btn primary-glass">Limpiar Monitor</button>
+                    </div>
+                </section>
+
+                <section id="view-consola-admin" class="tab-view">
+                    <div class="glass-panel">
+                        <h2>Métricas del Ecosistema</h2>
+                        <p class="text-muted">Estado actual del entorno en Spck Editor.</p>
+                        <div class="metric-cards-container">
+                            <div class="metric-card">
+                                <h3>ID de Sesión</h3>
+                                <div id="metric-user-id" class="metric-value cyan-neon" style="font-size: 0.85rem; word-break: break-all;">No definido</div>
                             </div>
-                            <button id="js-post-btn" class="btn-orange" onclick="window.publicarNuevoPost()">Publicar en Muro</button>
+                            <div class="metric-card">
+                                <h3>Proveedor Auth</h3>
+                                <div class="metric-value Google-blue-text">google.com</div>
+                            </div>
                         </div>
                     </div>
+                </section>
 
-                    <!-- CONTENEDOR DINÁMICO DE POSTS -->
-                    <div id="community-wall-container" class="posts-list"></div>
-                </div>
-            </div>
-
-            <!-- PESTAÑA: PERFIL & HERRAMIENTAS -->
-            <div id="tab-perfil" class="app-tab-content" style="display: none;">
-                <div class="profile-card">
-                    <div class="profile-avatar-large">🔥</div>
-                    <h2 id="profile-user-title">Gabriel</h2>
-                    <span class="profile-status-tag">ADMINISTRADOR PRINCIPAL</span>
-                    
-                    <div class="profile-details-grid">
-                        <div class="detail-item">
-                            <span class="detail-lbl">Entorno de Datos</span>
-                            <span class="detail-val text-orange">Firebase Firestore</span>
-                        </div>
-                        <div class="detail-item">
-                            <span class="detail-lbl">Autenticación</span>
-                            <span class="detail-val" style="color: #eab308;">Google Auth API</span>
-                        </div>
-                    </div>
-
-                    <div class="activity-box">
-                        <h4>Métricas de Sesión</h4>
-                        <ul id="activity-log-list">
-                            <li>Motor gráfico inicializado en White-Orange Design.</li>
-                        </ul>
-                    </div>
-
-                    <button class="btn-danger" onclick="window.procesarLogout()">Cerrar Sesión</button>
-                </div>
-            </div>
-        </main>
-
-        <!-- NAVEGACIÓN FLOTANTE INFERIOR -->
-        <nav class="bottom-nav-bar">
-            <button id="btn-tab-inicio" class="nav-item active" onclick="window.cambiarPestana('inicio')">
-                <span class="nav-icon">🏠</span><span class="nav-text">Muro</span>
-            </button>
-            <button id="btn-tab-perfil" class="nav-item" onclick="window.cambiarPestana('perfil')">
-                <span class="nav-icon">👤</span><span class="nav-text">Panel</span>
-            </button>
-        </nav>
-    </div>
-
-    <!-- MODAL: CREAR ANUNCIO -->
-    <div id="modal-anuncio" class="modal-overlay" style="display: none;">
-        <div class="modal-card">
-            <h3>Difundir Nuevo Anuncio</h3>
-            <div class="input-group">
-                <input type="text" id="admin-news-title" required placeholder="Título del anuncio">
-            </div>
-            <div class="input-group">
-                <textarea id="admin-news-content" required placeholder="Escribí los detalles aquí..."></textarea>
-            </div>
-            <div class="modal-buttons">
-                <button class="btn-flat" onclick="window.cerrarModal('modal-anuncio')">Cancelar</button>
-                <button class="btn-orange" onclick="window.publicarAnuncioFirebase()">Subir a la Nube</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- MODAL DE NOTIFICACIONES COMPACTO -->
-    <div id="modal-alert" class="modal-overlay" style="display: none;">
-        <div class="modal-card alert-center">
-            <div id="modal-alert-icon">ℹ️</div>
-            <h3 id="modal-alert-title">Notificación</h3>
-            <p id="modal-alert-message"></p>
-            <button class="btn-orange-full" onclick="window.cerrarModal('modal-alert')">Entendido</button>
+            </main>
         </div>
     </div>
 
